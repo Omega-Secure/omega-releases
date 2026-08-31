@@ -1,0 +1,57 @@
+# ===========================================================================
+#  Was hier NIE hineingehört.
+#
+#  Git vergisst nichts: eine Datei, die einmal committet wurde, bleibt in der
+#  Historie — auch nach `git rm`, auch in einem privaten Repository. Deshalb
+#  ist diese Liste eher zu lang als zu kurz.
+#
+#  Sie ist die zweite Verteidigungslinie; die erste ist, solche Dateien gar
+#  nicht erst in diesen Ordner zu legen. Die dritte ist .githooks/pre-commit.
+# ===========================================================================
+
+# --- Schlüssel: privat, unter allen Umständen -----------------------------
+*.key
+*.pem
+*.p12
+*.pfx
+*_rsa
+*_ed25519
+id_*
+.minisign/
+*mldsa*.key
+*minisign*.key
+
+# --- Konfigurationen mit Zugangsdaten -------------------------------------
+config.php
+report-config.php
+bounty-db.php
+*-config.php
+!*-config.example.php
+.env
+.env.*
+*.env
+
+# --- Datenbank ------------------------------------------------------------
+*.sql
+*.sql.gz
+*.dump
+!**/schema.example.sql
+
+# --- Abzüge und Pakete ----------------------------------------------------
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+connect_src/
+*_vorher/
+*-vorher/
+
+# --- Krimskrams -----------------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*~
+__pycache__/
+*.pyc
+.venv/
+node_modules/

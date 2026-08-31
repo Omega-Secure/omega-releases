@@ -1,0 +1,84 @@
+# ===========================================================================
+#  Täglicher Abgleich: liefern die Websites noch das aus, was hier steht?
+#
+#  Der Lauf braucht keinerlei Geheimnisse — er ruft nur öffentliche Adressen
+#  ab. Findet er etwas, öffnet er ein Issue; findet er nichts, bleibt es
+#  still. Ein bereits offenes Issue wird kommentiert statt verdoppelt.
+#
+#  Das ist der automatische Teil des Rollback-Schutzes: eine zurückgespielte
+#  alte Fassung fällt spätestens am nächsten Morgen auf, auch wenn gerade
+#  niemand hinsieht.
+# ===========================================================================
+name: Abgleich mit den Websites
+
+on:
+  schedule:
+    # Täglich um 06:12 UTC. Krumme Minute mit Absicht — zur vollen Stunde
+    # starten bei GitHub sehr viele Läufe gleichzeitig und werden verzögert.
+    - cron: '12 6 * * *'
+  workflow_dispatch:        # von Hand auslösbar
+  push:
+    branches: [main]
+    paths: ['wallet/**', 'stack/**', 'keys/**']
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  abgleich:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Werkzeuge
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq minisign
+          pip3 install --quiet dilithium-py
+
+      - name: Prüfen
+        id: pruefung
+        run: |
+          set +e
+          ./pruefe.sh 2>&1 | tee /tmp/bericht.txt
+          echo "code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Bei Abweichung ein Issue öffnen
+        if: steps.pruefung.outputs.code != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            // Farbcodes aus der Terminalausgabe entfernen
+            const bericht = fs.readFileSync('/tmp/bericht.txt', 'utf8')
+                              .replace(/\u001b\[[0-9;]*m/g, '');
+            const titel = 'Abgleich: Website und Repository laufen auseinander';
+            const rumpf = [
+              'Der tägliche Abgleich hat etwas gefunden. Was das bedeutet, steht in der README:',
+              'eine ältere ausgelieferte Fassung kann ein steckengebliebenes Deployment sein —',
+              'oder ein zurückgespieltes Release. Ein abweichendes Manifest zu derselben Version',
+              'darf gar nicht vorkommen.',
+              '',
+              '```',
+              bericht.trim(),
+              '```',
+              '',
+              `Lauf: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            ].join('\n');
+
+            const offen = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'abgleich'
+            });
+            if (offen.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: offen.data[0].number, body: rumpf
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title: titel, body: rumpf, labels: ['abgleich']
+              });
+            }

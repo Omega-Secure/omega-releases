@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+#
+#  Bremse vor dem Commit.
+#  ------------------------------------------------------------------
+#  Sucht in allem, was gerade committet werden soll, nach Dingen, die
+#  hier nicht hineingehören: private Schlüssel, API-Schlüssel,
+#  Datenbank-Passwörter. Findet sie das Skript, bricht der Commit ab.
+#
+#  Es ist kein Sicherheitswerkzeug, sondern ein Netz gegen Unachtsamkeit.
+#  Ein Geheimnis, das hier durchrutscht, ist nach dem Push verbrannt —
+#  Git vergisst nichts, auch nicht in privaten Repositorys.
+#
+#  Einschalten (einmalig, je Arbeitskopie):
+#      git config core.hooksPath .githooks
+#
+#  Im Ausnahmefall bewusst umgehen:
+#      git commit --no-verify
+#
+set -uo pipefail
+
+rot=$'\033[1;31m'; gelb=$'\033[0;33m'; aus=$'\033[0m'
+treffer=0
+
+melde() {
+  printf '%s✗ %s%s\n    %s\n' "$rot" "$1" "$aus" "$2"
+  treffer=$((treffer + 1))
+}
+
+# Nur was wirklich neu dazukommt (staged), und keine gelöschten Dateien.
+dateien=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$dateien" ] && exit 0
+
+# ---- 1. Dateinamen, die für sich schon verdächtig sind -------------------
+while IFS= read -r f; do
+  case "$f" in
+    *.key|*.pem|*.p12|*.pfx|*id_rsa*|*id_ed25519*)
+      melde "Private Schlüsseldatei: $f" "Diese Datei gehört nie in ein Repository." ;;
+    */config.php|config.php|*report-config.php|*bounty-db.php)
+      melde "Konfiguration mit Zugangsdaten: $f" "Nur die *-config.example.php-Fassungen gehören hierher." ;;
+    *.sql|*.dump)
+      melde "Datenbank-Datei: $f" "Abzüge und Schemata mit echten Werten bleiben draussen." ;;
+  esac
+done <<< "$dateien"
+
+# ---- 2. Inhalte: Muster, die auf echte Geheimnisse hindeuten -------------
+# Absichtlich eng gefasst, damit die Bremse nicht bei jedem Beispiel greift.
+while IFS= read -r f; do
+  [ -f "$f" ] || continue
+  # Binärdateien überspringen
+  file --mime-encoding "$f" 2>/dev/null | grep -q binary && continue
+  inhalt=$(git show ":$f" 2>/dev/null) || continue
+
+  # Brevo-/Sendinblue-Schlüssel
+  if grep -qE 'xkeysib-[A-Za-z0-9]{20,}' <<< "$inhalt"; then
+    melde "Brevo-API-Schlüssel in $f" "Der Schlüssel wäre nach dem Push verbrannt."
+  fi
+  # Passwortzuweisungen mit einem Wert, der nach Zufall aussieht
+  if grep -qE "(DB_PASS|SMTP_PASS|CSRF_SECRET|BOUNTY_DB_PASS|db_pass|password)['\"]?\s*(=>|=|,)\s*['\"][A-Za-z0-9+/=_-]{16,}" <<< "$inhalt" \
+     && ! grep -qE "HIER_|BEISPIEL|EXAMPLE|CHANGEME|xxxxx|000000" <<< "$inhalt"; then
+    melde "Sieht aus wie ein echtes Passwort in $f" "Platzhalter wie HIER_… sind in Ordnung, echte Werte nicht."
+  fi
+  # Private Schlüssel im Klartext.
+  # Die Suchmuster sind absichtlich zweigeteilt zusammengesetzt: stünden sie
+  # am Stück da, fände dieses Skript sich beim Commit selbst.
+  if grep -q -- '-----BEGIN .*PRIVATE'' KEY-----' <<< "$inhalt"; then
+    melde "Privater Schlüssel im Klartext in $f" "Sofort entfernen und den Schlüssel als verbrannt behandeln."
+  fi
+  # minisign-Privatschlüssel (erkennbar am Kopf)
+  if grep -q 'untrusted comment: minisign encrypted ''secret key' <<< "$inhalt"; then
+    melde "minisign-Privatschlüssel in $f" "Damit könnte jemand in eurem Namen signieren."
+  fi
+done <<< "$dateien"
+
+if [ "$treffer" -gt 0 ]; then
+  printf '\n%sCommit abgebrochen — %d Fund(e).%s\n' "$rot" "$treffer" "$aus"
+  printf 'Wenn du sicher bist, dass es ein Fehlalarm ist:  git commit --no-verify\n\n'
+  exit 1
+fi
+
+printf '%s✓%s pre-commit: nichts Verdächtiges in %d Datei(en).\n' $'\033[0;32m' "$aus" "$(wc -l <<< "$dateien")"
+exit 0
