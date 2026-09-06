@@ -43,7 +43,7 @@ while IFS= read -r f; do
       # Schema- und Migrationsskripte sind erlaubt; Abzüge mit Daten oder echten
       # Passwörtern nicht. Erkennung: INSERT mit Werten oder IDENTIFIED BY ohne Platzhalter.
       inhalt=$(git show ":$f" 2>/dev/null || true)
-      if grep -qiE "^\s*INSERT\s+INTO" <<< "$inhalt" && ! grep -qiE "^\s*INSERT\s+INTO[^;]*SELECT" <<< "$inhalt"; then
+      if grep -qziE "INSERT\s+INTO[^;]*VALUES\s*\(" <<< "$inhalt"; then
         melde "Datenbank-Abzug mit Daten: $f" "Nur Schema/Migration ohne INSERT-Werte gehört hierher."
       elif grep -qiE "IDENTIFIED\s+BY\s+'[^<'][^']{3,}'" <<< "$inhalt"; then
         melde "Echtes Passwort in SQL: $f" "Nur Platzhalter wie '<PW_INGEST>' gehören hierher."
