@@ -7,6 +7,11 @@
 #      /pfad/zu/omega-releases/uebernehmen.sh wallet 1.4.9
 #      /pfad/zu/omega-releases/uebernehmen.sh stack  1.3.1
 #
+#  Oder ohne lokalen Ordner — genau das übernehmen, was die Website ausliefert:
+#
+#      /pfad/zu/omega-releases/uebernehmen.sh wallet --live
+#      /pfad/zu/omega-releases/uebernehmen.sh stack  --live
+#
 #  Kopiert nur, was öffentlich ist: Manifest, beide Signaturen, die
 #  Metadaten und die öffentlichen Schlüssel. Sonst nichts — kein
 #  Quellcode, keine Konfiguration, keine Schlüssel mit privatem Teil.
@@ -30,13 +35,35 @@ case "$PRODUKT" in
   *) fail "Aufruf:  uebernehmen.sh (wallet|stack) VERSION
    Beispiel:  $REPO/uebernehmen.sh wallet 1.4.9" ;;
 esac
-[ -n "$VERSION" ] || fail "Die Version fehlt.  Beispiel:  uebernehmen.sh $PRODUKT 1.4.9"
+[ -n "$VERSION" ] || fail "Die Version fehlt.  Beispiel:  uebernehmen.sh $PRODUKT 1.4.9   oder   uebernehmen.sh $PRODUKT --live"
+
+# ── --live: das, was die Website gerade ausliefert, von dort holen ──────────
+# Braucht keinen lokalen Release-Ordner. Es wird genau das übernommen, was
+# jeder Besucher sieht — und anschliessend geprüft, bevor es in die Historie geht.
+if [ "$VERSION" = "--live" ]; then
+  case "$PRODUKT" in wallet) URL=https://wallet.omegastack.io ;; stack) URL=https://omegastack.io ;; esac
+  say "Live-Stand von $URL holen"
+  L=$(curl -sfL "$URL/releases/latest.json") || fail "$URL/releases/latest.json nicht erreichbar."
+  VERSION=$(printf '%s' "$L" | python3 -c 'import sys,json;print(json.load(sys.stdin)["version"])')
+  echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || fail "latest.json nennt keine gültige Version."
+  TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+  mkdir -p "$TMP/public/releases/$VERSION" "$TMP/public/.well-known"
+  for f in SHA256SUMS SHA256SUMS.minisig build-info.json; do
+    curl -sfL "$URL/releases/$VERSION/$f" -o "$TMP/public/releases/$VERSION/$f" || fail "$f fehlt auf der Website."
+  done
+  curl -sfL "$URL/releases/$VERSION/SHA256SUMS.mldsa" -o "$TMP/public/releases/$VERSION/SHA256SUMS.mldsa" || true
+  curl -sfL "$URL/.well-known/minisign.pub"    -o "$TMP/public/.well-known/minisign.pub"    || fail "minisign.pub fehlt auf der Website."
+  curl -sfL "$URL/.well-known/omega-mldsa.pub" -o "$TMP/public/.well-known/omega-mldsa.pub" || true
+  curl -sfL "$URL/omega-pqsign.py"             -o "$TMP/public/omega-pqsign.py"             || true
+  ok "Version $VERSION, Manifest, Signaturen, Schlüssel geladen"
+  cd "$TMP"
+fi
 echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || fail "Version muss MAJOR.MINOR.PATCH sein."
 
 QUELLE="public/releases/$VERSION"
 [ -d "$QUELLE" ] || fail "$QUELLE gibt es hier nicht.
-   Dieses Skript wird im entpackten Release-Ordner aufgerufen — dort, wo public/ liegt.
-   Aktuell: $(pwd)"
+   Dieses Skript wird im entpackten Release-Ordner aufgerufen — dort, wo public/ liegt —
+   oder mit --live statt der Version.   Aktuell: $(pwd)"
 
 ZIEL="$REPO/$PRODUKT/$VERSION"
 if [ -d "$ZIEL" ] && [ -f "$ZIEL/SHA256SUMS" ]; then
@@ -64,6 +91,11 @@ else
 fi
 
 mkdir -p "$REPO/keys"
+if [ -f "$REPO/keys/minisign.pub" ] && [ -f public/.well-known/minisign.pub ] && ! cmp -s <(grep -v '^untrusted' public/.well-known/minisign.pub) <(grep -v '^untrusted' "$REPO/keys/minisign.pub"); then
+  fail "Der minisign-Schlüssel der Website ist ein ANDERER als der im Repo.
+   Ein Schlüsselwechsel ist ein Ereignis — wenn er beabsichtigt war, keys/minisign.pub
+   bewusst ersetzen und im Changelog nennen. Sonst: Alarm."
+fi
 [ -f public/.well-known/minisign.pub ]     && cp public/.well-known/minisign.pub     "$REPO/keys/minisign.pub"
 [ -f public/.well-known/omega-mldsa.pub ]  && cp public/.well-known/omega-mldsa.pub  "$REPO/keys/omega-mldsa.pub"
 mkdir -p "$REPO/werkzeug"
