@@ -41,7 +41,7 @@ Ed25519 mit [minisign](https://jedisct1.github.io/minisign/):
 
 ML-DSA-65 mit dem mitgelieferten Werkzeug (braucht Python 3 und `dilithium-py`):
 
-    pip3 install dilithium-py
+    python3 -m pip install --user --break-system-packages dilithium-py
     python3 werkzeug/omega-pqsign.py verify \
         wallet/1.4.9/SHA256SUMS wallet/1.4.9/SHA256SUMS.mldsa keys/omega-mldsa.pub
 
@@ -102,7 +102,7 @@ back to an older, equally validly signed version.
 
     minisign -Vm wallet/1.4.9/SHA256SUMS -p keys/minisign.pub
 
-    pip3 install dilithium-py
+    python3 -m pip install --user --break-system-packages dilithium-py
     python3 werkzeug/omega-pqsign.py verify \
         wallet/1.4.9/SHA256SUMS wallet/1.4.9/SHA256SUMS.mldsa keys/omega-mldsa.pub
 
