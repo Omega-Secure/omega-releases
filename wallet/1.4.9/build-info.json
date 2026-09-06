@@ -1,0 +1,15 @@
+{
+  "product": "Omega Wallet Website",
+  "version": "1.4.9",
+  "date": "2026-09-01",
+  "files": 13,
+  "algorithm": "SHA-256",
+  "signature": "minisign (Ed25519)",
+  "signature2": "ML-DSA-65 (FIPS 204)",
+  "manifestSignature2": "SHA256SUMS.mldsa",
+  "publicKey2": "ED7FC6B103401385",
+  "publisher": "C&W Software Labs AG, Bundesplatz 4, 6300 Zug, Schweiz",
+  "publicKey": "RWQUog1ae6o2i8JX7sz2GlZJHfhj/CEuIB7qKcqDCpDfsQcnKBy7Zofu",
+  "manifest": "SHA256SUMS",
+  "manifestSignature": "SHA256SUMS.minisig"
+}
