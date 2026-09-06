@@ -37,8 +37,17 @@ while IFS= read -r f; do
       melde "Private Schlüsseldatei: $f" "Diese Datei gehört nie in ein Repository." ;;
     */config.php|config.php|*report-config.php|*bounty-db.php)
       melde "Konfiguration mit Zugangsdaten: $f" "Nur die *-config.example.php-Fassungen gehören hierher." ;;
-    *.sql|*.dump)
-      melde "Datenbank-Datei: $f" "Abzüge und Schemata mit echten Werten bleiben draussen." ;;
+    *.dump)
+      melde "Datenbank-Abzug: $f" "Abzüge bleiben draussen." ;;
+    *.sql)
+      # Schema- und Migrationsskripte sind erlaubt; Abzüge mit Daten oder echten
+      # Passwörtern nicht. Erkennung: INSERT mit Werten oder IDENTIFIED BY ohne Platzhalter.
+      inhalt=$(git show ":$f" 2>/dev/null || true)
+      if grep -qiE "^\s*INSERT\s+INTO" <<< "$inhalt" && ! grep -qiE "^\s*INSERT\s+INTO[^;]*SELECT" <<< "$inhalt"; then
+        melde "Datenbank-Abzug mit Daten: $f" "Nur Schema/Migration ohne INSERT-Werte gehört hierher."
+      elif grep -qiE "IDENTIFIED\s+BY\s+'[^<'][^']{3,}'" <<< "$inhalt"; then
+        melde "Echtes Passwort in SQL: $f" "Nur Platzhalter wie '<PW_INGEST>' gehören hierher."
+      fi ;;
   esac
 done <<< "$dateien"
 
